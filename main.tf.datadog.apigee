@@ -1,0 +1,100 @@
+terraform {
+  required_providers {
+    apigee = {
+      source  = "scastria/apigee"
+      version = "~> 0.1.0"
+    }
+    datadog = {
+      source = "DataDog/datadog"
+    }
+  }
+}
+
+#Configure the Apigee Provider
+provider "apigee" {
+  username = "martin2176@yahoo.com"
+  password = "abcD1234%"
+  //  access_token = "Use access token instead of username/password"
+  //  oauth_server = "Treat username/password as machine user and obtain access token automatically"
+  organization = "martin2176-eval"
+}
+
+#Add api proxy to api product
+resource "apigee_product" "weatherapis" {
+  name               = "weatherapis"
+  display_name       = "weatherapis"
+  description        = "weatherapis"
+  auto_approval_type = true
+  proxies            = ["weather"]
+  environments = [
+    "prod"
+  ]
+  attributes = {
+    access = "Internal only"
+  }
+  quota           = 20
+  quota_interval  = 1
+  quota_time_unit = "minute"
+}
+
+#Add api developer app and add weather api product to the app
+resource "apigee_developer_app" "weatherapp" {
+  name            = "weatherapp"
+  developer_email = "martin2176@gmail.com"
+}
+
+resource "apigee_developer_app_credential" "weatherappcredential" {
+  developer_email    = "martin2176@gmail.com"
+  developer_app_name = apigee_developer_app.weatherapp.name
+  consumer_key       = "gLMcKjtHsg2cLRNGZNFv9zhz45ymeseg"
+  consumer_secret    = "45ymeseg"
+  api_products = [
+    apigee_product.weatherapis.name
+  ]
+}
+resource "apigee_proxy" "weather" {
+  name        = "weather"
+  bundle      = "weather_rev6_2021_12_15.zip"
+  bundle_hash = filebase64sha256("weather_rev6_2021_12_15.zip")
+}
+resource "apigee_proxy_deployment" "weather" {
+  proxy_name       = apigee_proxy.weather.name
+  environment_name = "prod"
+  revision         = apigee_proxy.weather.revision
+}
+
+provider "datadog" {
+  api_key = "97cc5fd71c54aa9c83a8639777b7dc5f"
+  app_key = "5c13bff540167dfdcea74623aaa148d6f9d1f943"
+}
+
+resource "datadog_monitor_json" "monitor_json" {
+  monitor = <<-EOF
+{
+	"name": "Service frontend has a high average latency on env:dev serviceteam:domainarchitecture",
+	"type": "query alert",
+	"query": "avg(last_1m):avg:trace.servlet.request{env:dev,service:frontend,serviceteam:domainarchitecture} > 0.5",
+	"message": "`frontend` average latency is too high.\n\n@martin.francis@ferguson.com",
+	"tags": [
+		"harnessdemo"
+	],
+	"options": {
+		"thresholds": {
+			"critical": 0.5,
+			"warning": 0.1
+		},
+		"notify_audit": false,
+		"require_full_window": false,
+		"notify_no_data": false,
+		"no_data_timeframe": 10,
+		"renotify_interval": 0,
+		"locked": false,
+		"silenced": {},
+		"include_tags": true,
+		"escalation_message": ""
+	},
+	"priority": 3
+}
+EOF
+}
+
